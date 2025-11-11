@@ -5,6 +5,7 @@ CREATE TABLE IF NOT EXISTS calendar_events (
   description TEXT,
   start_date TIMESTAMPTZ NOT NULL,
   location TEXT,
+  country TEXT,
   is_recurring BOOLEAN DEFAULT FALSE,
   recurrence_type TEXT CHECK (recurrence_type IN ('daily', 'weekly', 'monthly', 'yearly')),
   recurrence_interval INTEGER DEFAULT 1,

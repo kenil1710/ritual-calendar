@@ -3,6 +3,7 @@
 import { useEffect, useMemo, useState } from 'react'
 import Link from 'next/link'
 import { CalendarEvent, supabase } from '@/lib/supabase'
+import { COUNTRY_LOOKUP, COUNTRY_OPTIONS, CountryOption } from '@/lib/countries'
 import { useAuth } from '@/contexts/AuthContext'
 
 type EventCategory = 'all' | 'regional' | 'games' | 'global' | 'workshop'
@@ -15,6 +16,9 @@ export default function Home() {
   const [selectedCategory, setSelectedCategory] = useState<EventCategory>('all')
   const [currentWeek, setCurrentWeek] = useState(new Date())
   const [dayPage, setDayPage] = useState<Record<string, number>>({})
+  const [viewMode, setViewMode] = useState<'all' | 'regional'>('all')
+  const [showUtcTimes, setShowUtcTimes] = useState(false)
+  const [selectedCountry, setSelectedCountry] = useState<string | null>(null)
 
   useEffect(() => {
     fetchEvents()
@@ -48,13 +52,20 @@ export default function Home() {
     return title.slice(0, 2).toUpperCase()
   }
 
-  const formatTime = (dateString: string) => {
+  const formatTime = (dateString: string, useUtc = false) => {
     const date = new Date(dateString)
-    return date.toLocaleTimeString('en-US', {
+    const options: Intl.DateTimeFormatOptions = {
       hour: 'numeric',
       minute: '2-digit',
       hour12: true,
-    })
+    }
+    if (useUtc) {
+      return date.toLocaleTimeString('en-US', {
+        ...options,
+        timeZone: 'UTC',
+      })
+    }
+    return date.toLocaleTimeString('en-US', options)
   }
 
   const getRecurrenceText = (event: CalendarEvent) => {
@@ -148,6 +159,60 @@ export default function Home() {
     }
     return days
   }, [weekStart])
+
+  const availableCountryValues = useMemo(() => {
+    const set = new Set<string>()
+    events.forEach(event => {
+      const country = event.country?.trim()
+      if (country) {
+        set.add(country)
+      }
+    })
+    return set
+  }, [events])
+
+  const extraCountryOptions = useMemo<CountryOption[]>(() => {
+    return Array.from(availableCountryValues)
+      .filter(value => !COUNTRY_LOOKUP[value])
+      .map(value => ({
+        value,
+        label: value,
+      }))
+  }, [availableCountryValues])
+
+  const countryOptions = useMemo<CountryOption[]>(() => {
+    return [...COUNTRY_OPTIONS, ...extraCountryOptions]
+  }, [extraCountryOptions])
+
+  const combinedCountryLookup = useMemo<Record<string, CountryOption>>(() => {
+    const extraLookup: Record<string, CountryOption> = {}
+    extraCountryOptions.forEach(option => {
+      extraLookup[option.value] = option
+    })
+    return { ...COUNTRY_LOOKUP, ...extraLookup }
+  }, [extraCountryOptions])
+
+  const formatCountryLabel = (countryValue?: string | null) => {
+    if (!countryValue) return null
+    const option = combinedCountryLookup[countryValue]
+    if (option) {
+      return option.emoji ? `${option.emoji} ${option.label}` : option.label
+    }
+    return countryValue
+  }
+
+  const hasRegionalEvents = availableCountryValues.size > 0
+
+  useEffect(() => {
+    if (viewMode !== 'regional') return
+    if (selectedCountry) {
+      return
+    }
+    const firstAvailable = countryOptions.find(option => availableCountryValues.has(option.value))
+    if (firstAvailable) {
+      setSelectedCountry(firstAvailable.value)
+    }
+  }, [viewMode, selectedCountry, availableCountryValues, countryOptions])
 
   const formatWeekRange = useMemo(() => {
     const startMonth = weekStart.toLocaleDateString('en-US', { month: 'short' })
@@ -320,8 +385,128 @@ export default function Home() {
     return all
   }, [events, weekStart, weekEnd])
 
+  const renderEventCard = (
+    event: CalendarEvent,
+    options?: {
+      forceBadgeLabel?: string
+    }
+  ) => {
+    const badge = getCategoryBadge((event as any).category)
+    const initials = getEventInitials(event.title)
+    const countryLabel = formatCountryLabel(event.country)
+    const badgeLabel = options?.forceBadgeLabel ?? badge?.label
+    const badgeClassName =
+      badge?.className ||
+      'bg-[rgba(88,243,153,0.12)] text-[var(--accent)] border border-[rgba(88,243,153,0.25)]'
+
+    return (
+      <div className="flex flex-col gap-3 rounded-2xl border border-[rgba(88,243,153,0.18)] bg-[rgba(12,22,18,0.88)] px-4 py-3 hover:border-[rgba(88,243,153,0.3)] hover:shadow-[0_16px_45px_-24px_rgba(88,243,153,0.55)] transition duration-200">
+        <div className="flex flex-col gap-3 md:flex-row md:items-center md:justify-between">
+          <div className="flex items-center gap-4">
+            <div className="flex h-12 w-12 items-center justify-center rounded-2xl border border-[rgba(88,243,153,0.35)] bg-[rgba(88,243,153,0.12)] text-base font-semibold tracking-[0.28em] text-[var(--accent)] uppercase">
+              {initials}
+            </div>
+            <div className="space-y-1">
+              <div className="flex items-center gap-2">
+                <h3 className="text-white text-base font-semibold">
+                  {event.title}
+                </h3>
+                {badgeLabel && (
+                  <span className={`inline-flex px-2 py-0.5 text-[10px] font-semibold uppercase tracking-[0.24em] rounded-full ${badgeClassName}`}>
+                    {badgeLabel}
+                  </span>
+                )}
+              </div>
+              <div className="flex flex-wrap items-center gap-2 text-xs uppercase tracking-[0.24em] text-[var(--accent)]">
+                <span>{formatTime(event.start_date, showUtcTimes)}</span>
+                {showUtcTimes && (
+                  <span className="text-[10px] text-[var(--text-secondary)] tracking-[0.24em]">
+                    UTC
+                  </span>
+                )}
+                {event.location && (
+                  <>
+                    <span className="h-1 w-1 rounded-full bg-[rgba(88,243,153,0.6)]" />
+                    <span className="text-[var(--text-secondary)] tracking-[0.18em]">
+                      {event.location}
+                    </span>
+                  </>
+                )}
+                {countryLabel && (
+                  <>
+                    <span className="h-1 w-1 rounded-full bg-[rgba(88,243,153,0.6)]" />
+                    <span className="text-[var(--text-secondary)] tracking-[0.18em]">
+                      {countryLabel}
+                    </span>
+                  </>
+                )}
+              </div>
+            </div>
+          </div>
+          <div className="flex items-center gap-3">
+            <button
+              onClick={() => openGoogleCalendar(event)}
+              className="flex items-center gap-2 rounded-full bg-[rgba(88,243,153,0.16)] px-4 py-2 text-xs font-semibold uppercase tracking-[0.3em] text-[var(--accent)] hover:bg-[rgba(88,243,153,0.28)] hover:text-white transition"
+              title="Add to Google Calendar"
+              aria-label="Add to Google Calendar"
+            >
+              <svg
+                className="h-3.5 w-3.5 text-[var(--accent)]"
+                fill="none"
+                stroke="currentColor"
+                strokeWidth={1.8}
+                viewBox="0 0 24 24"
+              >
+                <path d="M8 7V3m8 4V3m-9 8h10m-12 8h14a2 2 0 002-2V7a2 2 0 00-2-2H5a2 2 0 00-2 2v12a2 2 0 002 2z" strokeLinecap="round" strokeLinejoin="round" />
+              </svg>
+              <span>Calendar</span>
+            </button>
+            {isAdmin && (
+              <div className="flex items-center gap-1.5">
+                <Link
+                  href={`/admin/${event.id}`}
+                  className="flex items-center justify-center rounded-full bg-[rgba(14,23,20,0.9)] p-2 text-base text-[var(--accent)] hover:text-white transition"
+                  title="Edit event"
+                  aria-label="Edit event"
+                >
+                  <span role="img" aria-hidden="true">
+                    ✏️
+                  </span>
+                  <span className="sr-only">Edit event</span>
+                </Link>
+                <button
+                  onClick={() => handleDelete(event.id!, event.title)}
+                  className="flex items-center justify-center rounded-full bg-[rgba(30,8,8,0.6)] p-2 text-base text-red-400 hover:text-red-200 transition"
+                  title="Delete event"
+                  aria-label="Delete event"
+                >
+                  <span role="img" aria-hidden="true">
+                    🗑️
+                  </span>
+                  <span className="sr-only">Delete event</span>
+                </button>
+              </div>
+            )}
+          </div>
+        </div>
+        {event.description && (
+          <p className="text-sm text-[var(--text-secondary)] leading-relaxed">
+            {event.description}
+          </p>
+        )}
+      </div>
+    )
+  }
+
   const filteredEvents = useMemo(() => {
     let filtered = eventsForWeek
+
+    if (viewMode === 'regional') {
+      if (!selectedCountry) {
+        return []
+      }
+      filtered = filtered.filter(event => event.country?.trim() === selectedCountry)
+    }
 
     if (selectedCategory !== 'all') {
       filtered = filtered.filter(event => {
@@ -331,7 +516,7 @@ export default function Home() {
     }
 
     return filtered
-  }, [eventsForWeek, selectedCategory])
+  }, [eventsForWeek, selectedCategory, viewMode, selectedCountry])
 
   console.log(filteredEvents)
   console.log(weekDays) 
@@ -473,6 +658,69 @@ export default function Home() {
           </p>
         </div>
 
+        <div className="flex flex-col items-center gap-3 sm:flex-row sm:justify-center sm:gap-6">
+          <div className="flex flex-wrap items-center gap-2">
+            <button
+              onClick={() => setViewMode('all')}
+              className={`rounded-full px-5 py-2 text-xs font-semibold uppercase tracking-[0.3em] border transition ${
+                viewMode === 'all'
+                  ? 'bg-[var(--accent)] text-[#02150c] border-[var(--accent)] shadow-[0_12px_30px_-18px_rgba(88,243,153,0.65)]'
+                  : 'bg-[rgba(88,243,153,0.16)] text-[var(--accent)] border-[rgba(88,243,153,0.2)] hover:bg-[rgba(88,243,153,0.24)] hover:text-white'
+              }`}
+            >
+              All Events
+            </button>
+            <button
+              onClick={() => setViewMode('regional')}
+              disabled={!hasRegionalEvents}
+              className={`rounded-full px-5 py-2 text-xs font-semibold uppercase tracking-[0.3em] border transition ${
+                viewMode === 'regional'
+                  ? 'bg-[rgba(88,243,153,0.28)] text-white border-[rgba(88,243,153,0.35)] shadow-[0_12px_30px_-18px_rgba(88,243,153,0.65)]'
+                  : 'bg-[rgba(88,243,153,0.16)] text-[var(--accent)] border-[rgba(88,243,153,0.2)] hover:bg-[rgba(88,243,153,0.24)] hover:text-white'
+              } ${!hasRegionalEvents ? 'opacity-50 cursor-not-allowed' : ''}`}
+            >
+              Regional
+            </button>
+          </div>
+
+          {viewMode === 'regional' && hasRegionalEvents && (
+            <div className="flex items-center gap-2">
+              <label
+                htmlFor="regional-country"
+                className="text-[10px] uppercase tracking-[0.24em] text-[var(--accent)]"
+              >
+                Country
+              </label>
+              <select
+                id="regional-country"
+                value={selectedCountry ?? ''}
+                onChange={(e) => setSelectedCountry(e.target.value || null)}
+                className="min-w-[180px] rounded-xl border border-[rgba(88,243,153,0.25)] bg-[#0c1914] px-3 py-2 text-sm text-white focus:border-[var(--accent)] focus:outline-none focus:ring-1 focus:ring-[var(--accent)]"
+              >
+                <option value="">Select a country</option>
+                {countryOptions.map(option => (
+                  <option key={option.value} value={option.value}>
+                    {option.emoji ? `${option.emoji} ${option.label}` : option.label}
+                  </option>
+                ))}
+              </select>
+            </div>
+          )}
+
+          <button
+            onClick={() => setShowUtcTimes(prev => !prev)}
+            className="rounded-full border border-[rgba(88,243,153,0.2)] px-4 py-2 text-xs font-semibold uppercase tracking-[0.3em] text-[var(--accent)] transition hover:bg-[rgba(88,243,153,0.24)] hover:text-white"
+          >
+            {showUtcTimes ? 'Show Local Time' : 'Show UTC Time'}
+          </button>
+        </div>
+
+        {viewMode === 'regional' && !hasRegionalEvents && (
+          <p className="text-center text-sm text-[var(--text-secondary)]">
+            Regional events will appear once an admin assigns countries to events.
+          </p>
+        )}
+
         <div className="flex items-center justify-center gap-4">
           <button onClick={goToPrevWeek} className="week-button">
             &lt; Prev Week
@@ -595,8 +843,6 @@ export default function Home() {
                     <div className="flex flex-col gap-3 pl-10">
                     {visibleEvents.length > 0 ? (
                       visibleEvents.map((event, index) => {
-                        const badge = getCategoryBadge((event as any).category)
-                        const initials = getEventInitials(event.title)
                         const isLastOnPage = index === visibleEvents.length - 1
                         return (
                           <div key={`${event.id ?? 'event'}-${event.start_date}`} className="flex gap-4">
@@ -607,83 +853,10 @@ export default function Home() {
                               )}
                             </div>
                             <div className="flex-1">
-                              <div className="flex flex-col gap-3 rounded-2xl border border-[rgba(88,243,153,0.18)] bg-[rgba(12,22,18,0.88)] px-4 py-3 hover:border-[rgba(88,243,153,0.3)] hover:shadow-[0_16px_45px_-24px_rgba(88,243,153,0.55)] transition duration-200">
-                                <div className="flex flex-col gap-3 md:flex-row md:items-center md:justify-between">
-                                  <div className="flex items-center gap-4">
-                                    <div className="flex h-12 w-12 items-center justify-center rounded-2xl border border-[rgba(88,243,153,0.35)] bg-[rgba(88,243,153,0.12)] text-base font-semibold tracking-[0.28em] text-[var(--accent)] uppercase">
-                                      {initials}
-                                    </div>
-                                    <div className="space-y-1">
-                                      <div className="flex items-center gap-2">
-                                        <h3 className="text-white text-base font-semibold">
-                                          {event.title}
-                                        </h3>
-                                        {badge && (
-                                          <span className={`inline-flex px-2 py-0.5 text-[10px] font-semibold uppercase tracking-[0.24em] rounded-full ${badge.className}`}>
-                                            {badge.label}
-                                          </span>
-                                        )}
-                                      </div>
-                                      <div className="flex items-center gap-2 text-xs uppercase tracking-[0.24em] text-[var(--accent)]">
-                                        <span>{formatTime(event.start_date)}</span>
-                                        {event.location && (
-                                          <>
-                                            <span className="h-1 w-1 rounded-full bg-[rgba(88,243,153,0.6)]" />
-                                            <span className="text-[var(--text-secondary)] tracking-[0.18em]">
-                                              {event.location}
-                                            </span>
-                                          </>
-                                        )}
-                                      </div>
-                                    </div>
-                                  </div>
-                                  <div className="flex items-center gap-3">
-                                    <button
-                                      onClick={() => openGoogleCalendar(event)}
-                                      className="flex items-center gap-2 rounded-full bg-[rgba(88,243,153,0.16)] px-4 py-2 text-xs font-semibold uppercase tracking-[0.3em] text-[var(--accent)] hover:bg-[rgba(88,243,153,0.28)] hover:text-white transition"
-                                      title="Add to Google Calendar"
-                                      aria-label="Add to Google Calendar"
-                                    >
-                                      <svg
-                                        className="h-3.5 w-3.5 text-[var(--accent)]"
-                                        fill="none"
-                                        stroke="currentColor"
-                                        strokeWidth={1.8}
-                                        viewBox="0 0 24 24"
-                                      >
-                                        <path d="M8 7V3m8 4V3m-9 8h10m-12 8h14a2 2 0 002-2V7a2 2 0 00-2-2H5a2 2 0 00-2 2v12a2 2 0 002 2z" strokeLinecap="round" strokeLinejoin="round" />
-                                      </svg>
-                                      <span>Calendar</span>
-                                    </button>
-                                    {isAdmin && (
-                                      <div className="flex items-center gap-1.5">
-                                        <Link
-                                          href={`/admin/${event.id}`}
-                                          className="flex items-center justify-center rounded-full bg-[rgba(14,23,20,0.9)] p-2 text-base text-[var(--accent)] hover:text-white transition"
-                                          title="Edit event"
-                                          aria-label="Edit event"
-                                        >
-                                          <span role="img" aria-hidden="true">
-                                            ✏️
-                                          </span>
-                                          <span className="sr-only">Edit event</span>
-                                        </Link>
-                                        <button
-                                          onClick={() => handleDelete(event.id!, event.title)}
-                                          className="flex items-center justify-center rounded-full bg-[rgba(30,8,8,0.6)] p-2 text-base text-red-400 hover:text-red-200 transition"
-                                          title="Delete event"
-                                          aria-label="Delete event"
-                                        >
-                                          <span role="img" aria-hidden="true">
-                                            🗑️
-                                          </span>
-                                          <span className="sr-only">Delete event</span>
-                                        </button>
-                                      </div>
-                                    )}
-                                  </div>
-                                </div>
-                              </div>
+                              {renderEventCard(
+                                event,
+                                viewMode === 'regional' ? { forceBadgeLabel: 'Regional' } : undefined
+                              )}
                             </div>
                           </div>
                         )

@@ -11,6 +11,7 @@ CREATE TABLE IF NOT EXISTS public.calendar_events (
   description TEXT,
   start_date TIMESTAMPTZ NOT NULL,
   location TEXT,
+  country TEXT,
   is_recurring BOOLEAN DEFAULT FALSE,
   recurrence_type TEXT CHECK (recurrence_type IN ('daily', 'weekly', 'monthly', 'yearly')),
   recurrence_interval INTEGER DEFAULT 1,
@@ -26,7 +27,8 @@ ALTER TABLE public.calendar_events DROP COLUMN IF EXISTS end_date;
 ALTER TABLE public.calendar_events 
   ADD COLUMN IF NOT EXISTS is_recurring BOOLEAN DEFAULT FALSE,
   ADD COLUMN IF NOT EXISTS recurrence_type TEXT,
-  ADD COLUMN IF NOT EXISTS recurrence_interval INTEGER DEFAULT 1;
+  ADD COLUMN IF NOT EXISTS recurrence_interval INTEGER DEFAULT 1,
+  ADD COLUMN IF NOT EXISTS country TEXT;
 
 -- Add constraint for recurrence_type if it doesn't exist
 DO $$ 

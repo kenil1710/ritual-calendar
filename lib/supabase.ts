@@ -17,6 +17,7 @@ export interface CalendarEvent {
   description?: string
   start_date: string
   location?: string
+  country?: string | null
   is_recurring?: boolean
   recurrence_type?: 'daily' | 'weekly' | 'monthly' | 'yearly' | null
   recurrence_interval?: number | null

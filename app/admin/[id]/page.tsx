@@ -2,6 +2,7 @@
 
 import { useState, useEffect } from 'react'
 import { supabase, CalendarEvent } from '@/lib/supabase'
+import { COUNTRY_OPTIONS } from '@/lib/countries'
 import { useRouter, useParams } from 'next/navigation'
 import DatePicker from 'react-datepicker'
 import 'react-datepicker/dist/react-datepicker.css'
@@ -21,6 +22,7 @@ export default function EditEventPage() {
     description: '',
     start_date: '',
     location: '',
+    country: '',
     is_recurring: false,
     recurrence_type: null,
     recurrence_interval: 1,
@@ -53,6 +55,7 @@ export default function EditEventPage() {
           description: data.description || '',
           start_date: data.start_date,
           location: data.location || '',
+          country: data.country || '',
           is_recurring: data.is_recurring || false,
           recurrence_type: data.recurrence_type || null,
           recurrence_interval: data.recurrence_interval || 1,
@@ -91,6 +94,7 @@ export default function EditEventPage() {
         description: formData.description || null,
         start_date: startDate.toISOString(),
         location: formData.location || null,
+        country: formData.country?.trim() ? formData.country.trim() : null,
         is_recurring: formData.is_recurring || false,
         recurrence_type: formData.is_recurring ? formData.recurrence_type : null,
         recurrence_interval: formData.is_recurring ? (formData.recurrence_interval || 1) : null,
@@ -269,6 +273,25 @@ export default function EditEventPage() {
             className="w-full px-3 py-2 bg-[#0c1914] border border-[rgba(88,243,153,0.25)] text-white rounded-md shadow-sm focus:outline-none focus:ring-[var(--accent)] focus:border-[var(--accent)]"
             placeholder="Enter event location"
           />
+        </div>
+
+        <div>
+          <label htmlFor="country" className="block text-sm font-medium text-[var(--text-secondary)] mb-2">
+            Country
+          </label>
+          <select
+            id="country"
+            value={formData.country || ''}
+            onChange={(e) => setFormData({ ...formData, country: e.target.value })}
+            className="w-full px-3 py-2 bg-[#0c1914] border border-[rgba(88,243,153,0.25)] text-white rounded-md shadow-sm focus:outline-none focus:ring-[var(--accent)] focus:border-[var(--accent)]"
+          >
+            <option value="">Global (no country)</option>
+            {COUNTRY_OPTIONS.map(option => (
+              <option key={option.value} value={option.value}>
+                {option.emoji ? `${option.emoji} ${option.label}` : option.label}
+              </option>
+            ))}
+          </select>
         </div>
 
         <div className="flex justify-end space-x-4">

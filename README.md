@@ -11,6 +11,7 @@ A modern calendar event management application built with Next.js, TypeScript, a
 - **Edit Events**: Update existing events with a dedicated edit page
 - **Delete Events**: Remove events with confirmation dialog
 - **Recurring Events**: Support for recurring events (daily, weekly, monthly, yearly) with customizable intervals
+- **Regional Filtering**: Highlight regional events with a country selector
 - **Event Listing**: View all calendar events in a beautiful card layout with recurring event indicators
 - **Real-time Data**: Powered by Supabase for reliable data storage
 - **Simple Access**: Share admin URL directly with authorized administrators
@@ -43,6 +44,7 @@ CREATE TABLE IF NOT EXISTS public.calendar_events (
   description TEXT,
   start_date TIMESTAMPTZ NOT NULL,
   location TEXT,
+  country TEXT,
   is_recurring BOOLEAN DEFAULT FALSE,
   recurrence_type TEXT CHECK (recurrence_type IN ('daily', 'weekly', 'monthly', 'yearly')),
   recurrence_interval INTEGER DEFAULT 1,
@@ -57,7 +59,8 @@ ALTER TABLE public.calendar_events DROP COLUMN IF EXISTS end_date;
 ALTER TABLE public.calendar_events 
   ADD COLUMN IF NOT EXISTS is_recurring BOOLEAN DEFAULT FALSE,
   ADD COLUMN IF NOT EXISTS recurrence_type TEXT,
-  ADD COLUMN IF NOT EXISTS recurrence_interval INTEGER DEFAULT 1;
+  ADD COLUMN IF NOT EXISTS recurrence_interval INTEGER DEFAULT 1,
+  ADD COLUMN IF NOT EXISTS country TEXT;
 
 -- Enable Row Level Security
 ALTER TABLE public.calendar_events ENABLE ROW LEVEL SECURITY;
@@ -159,6 +162,7 @@ Open [http://localhost:3000](http://localhost:3000) in your browser.
    - **Description** (optional): Add event description
    - **Date & Time** (required): Select the event date and time
    - **Location** (optional): Enter the event location
+   - **Country** (recommended): Select the country community (English list) to feature the event in regional listings
    - **Recurring Event**: Check the checkbox to make it recurring
      - Select recurrence type: Daily, Weekly, Monthly, or Yearly
      - Set the interval (e.g., every 2 weeks)
@@ -197,5 +201,3 @@ Open [http://localhost:3000](http://localhost:3000) in your browser.
 - Make sure to set up Row Level Security policies in Supabase according to your security requirements
 - The app uses the Supabase client-side library for direct database access
 - All dates are stored in UTC and converted to local time for display
-
-add
