@@ -385,6 +385,15 @@ export default function Home() {
     return all
   }, [events, weekStart, weekEnd])
 
+  const toastVariants: Record<'success' | 'error' | 'info', string> = {
+    success:
+      'bg-[rgba(34,197,94,0.18)] text-emerald-200 border border-[rgba(34,197,94,0.35)] shadow-[0_22px_50px_-26px_rgba(34,197,94,0.6)]',
+    error:
+      'bg-[rgba(239,68,68,0.18)] text-rose-200 border border-[rgba(239,68,68,0.35)] shadow-[0_22px_50px_-26px_rgba(239,68,68,0.6)]',
+    info:
+      'bg-[rgba(59,130,246,0.18)] text-blue-200 border border-[rgba(59,130,246,0.35)] shadow-[0_22px_50px_-26px_rgba(59,130,246,0.6)]',
+  }
+
   const renderEventCard = (
     event: CalendarEvent,
     options?: {
@@ -475,7 +484,7 @@ export default function Home() {
                   <span className="sr-only">Edit event</span>
                 </Link>
                 <button
-                  onClick={() => handleDelete(event.id!, event.title)}
+                  onClick={() => requestDelete(event.id!, event.title)}
                   className="flex items-center justify-center rounded-full bg-[rgba(30,8,8,0.6)] p-2 text-base text-red-400 hover:text-red-200 transition"
                   title="Delete event"
                   aria-label="Delete event"
@@ -506,6 +515,8 @@ export default function Home() {
         return []
       }
       filtered = filtered.filter(event => event.country?.trim() === selectedCountry)
+    } else {
+      filtered = filtered.filter(event => !event.country)
     }
 
     if (selectedCategory !== 'all') {
@@ -602,17 +613,46 @@ export default function Home() {
     window.open(url, '_blank', 'noopener,noreferrer')
   }
 
-  const handleDelete = async (eventId: string, eventTitle: string) => {
-    if (!confirm(`Are you sure you want to delete "${eventTitle}"?`)) return
+  const [toast, setToast] = useState<{ message: string; type: 'success' | 'error' | 'info' } | null>(null)
+  const [toastVisible, setToastVisible] = useState(false)
+  const [pendingDeletion, setPendingDeletion] = useState<{ id: string; title: string } | null>(null)
+  const [isDeleting, setIsDeleting] = useState(false)
 
+  const showToast = (message: string, type: 'success' | 'error' | 'info' = 'info') => {
+    setToast({ message, type })
+    setToastVisible(true)
+    setTimeout(() => setToastVisible(false), 3200)
+  }
+
+  useEffect(() => {
+    if (!toastVisible) {
+      const timer = setTimeout(() => setToast(null), 400)
+      return () => clearTimeout(timer)
+    }
+  }, [toastVisible])
+
+  const requestDelete = (eventId: string, eventTitle: string) => {
+    setPendingDeletion({ id: eventId, title: eventTitle })
+  }
+
+  const cancelDelete = () => {
+    setPendingDeletion(null)
+  }
+
+  const confirmDelete = async () => {
+    if (!pendingDeletion) return
+    setIsDeleting(true)
     try {
-      const { error } = await supabase.from('calendar_events').delete().eq('id', eventId)
+      const { error } = await supabase.from('calendar_events').delete().eq('id', pendingDeletion.id)
       if (error) throw error
       fetchEvents()
+      showToast(`Event "${pendingDeletion.title}" deleted`, 'success')
     } catch (err: any) {
-      alert(`Failed to delete event: ${err.message}`)
       console.error('Error deleting event:', err)
+      showToast(`Failed to delete "${pendingDeletion.title}": ${err.message}`, 'error')
     }
+    setIsDeleting(false)
+    setPendingDeletion(null)
   }
 
   const goToPrevWeek = () => {
@@ -650,6 +690,49 @@ export default function Home() {
 
   return (
     <div className="relative min-h-screen text-white">
+      {toast && (
+        <div
+          className={`fixed top-6 right-6 z-50 transition-all duration-300 ${
+            toastVisible ? 'opacity-100 translate-y-0' : 'pointer-events-none opacity-0 -translate-y-3'
+          }`}
+        >
+          <div className={`flex items-start gap-3 rounded-2xl px-4 py-3 min-w-[240px] ${toastVariants[toast.type]}`}>
+            <span className="text-lg">{toast.type === 'success' ? '✅' : toast.type === 'error' ? '⚠️' : 'ℹ️'}</span>
+            <div className="flex-1 text-sm leading-6">{toast.message}</div>
+          </div>
+        </div>
+      )}
+
+      {pendingDeletion && (
+        <div className="fixed inset-0 z-40 flex items-center justify-center bg-[rgba(6,12,10,0.8)] backdrop-blur-sm">
+          <div className="w-full max-w-md rounded-3xl border border-[rgba(88,243,153,0.16)] bg-[rgba(10,20,16,0.95)] p-6 text-white shadow-[0_28px_80px_-20px_rgba(0,0,0,0.6)] space-y-4">
+            <div className="space-y-2">
+              <h3 className="text-xl font-semibold">Delete event?</h3>
+              <p className="text-sm text-[var(--text-secondary)]">
+                This action will permanently remove <span className="text-[var(--accent)]">"{pendingDeletion.title}"</span>{' '}
+                from the calendar.
+              </p>
+            </div>
+            <div className="flex justify-end gap-3">
+              <button
+                onClick={cancelDelete}
+                disabled={isDeleting}
+                className="rounded-full border border-[rgba(88,243,153,0.22)] px-4 py-2 text-xs font-semibold uppercase tracking-[0.28em] text-[var(--text-secondary)] hover:text-white hover:border-[rgba(88,243,153,0.4)] transition"
+              >
+                Cancel
+              </button>
+              <button
+                onClick={confirmDelete}
+                disabled={isDeleting}
+                className="rounded-full bg-[rgba(239,68,68,0.25)] px-4 py-2 text-xs font-semibold uppercase tracking-[0.28em] text-rose-200 hover:bg-[rgba(239,68,68,0.4)] transition disabled:opacity-50"
+              >
+                {isDeleting ? 'Deleting…' : 'Delete'}
+              </button>
+            </div>
+          </div>
+        </div>
+      )}
+
       <div className="mx-auto px-4 sm:px-6 lg:px-8 py-12 space-y-10">
         <div className="text-center space-y-3">
           <h1 className="section-heading text-5xl font-bold text-[var(--accent)]">RITUAL CALENDAR</h1>
